@@ -4907,7 +4907,7 @@ function mpLoad(force){
         const official=mpCell(c[15]),perm=mpCell(c[27]),pers=mpCell(c[3]);
         const email=[official,perm,pers].find(e=>MP_EMAIL_RE.test(e))||'';
         return {empId:mpCell(c[0]),name:mpCell(c[1]),resigned:mpCell(c[2]),designation:mpCell(c[6]),dept:mpCell(c[8]),doj:mpDate(c[11]),email};
-      }).filter(r=>r.empId&&r.name&&!r.resigned);
+      }).filter(r=>r.empId&&r.name&&!r.resigned&&r.dept.trim().toLowerCase()!=='sales');
       MP_LOADED=true;MP_LOADING=false;
       const depts=[...new Set(MP_ROWS.map(r=>r.dept).filter(Boolean))].sort();
       const sel=document.getElementById('mp-dept'),cur=sel.value;
