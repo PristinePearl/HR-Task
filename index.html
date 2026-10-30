@@ -1630,6 +1630,28 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
     </div>
     <div class="btn-row"><button class="btn btn-primary" onclick="addEmployee()">＋ Add Employee</button></div>
   </div>
+  <div class="section" id="mp-section">
+    <div class="section-title">Add Staff from ManPower <span class="badge" id="mp-status">Not loaded</span></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Department</label><select id="mp-dept" onchange="mpRenderList()"><option value="">— Select department —</option></select></div>
+      <div class="form-group"><label>Search</label><input id="mp-search" placeholder="Name or Emp ID" oninput="mpRenderList()"/></div>
+    </div>
+    <div id="mp-list-wrap" style="display:none;margin-top:12px;">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px;font-size:13px;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;"><input type="checkbox" id="mp-all" onchange="mpToggleAll(this.checked)"/> Select all</label>
+        <span id="mp-sel-count" style="color:var(--muted)">0 selected</span>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th style="width:36px"></th><th>Emp ID</th><th>Name</th><th>Designation</th><th>Department</th><th>DOJ</th><th>Email</th></tr></thead>
+        <tbody id="mp-tbody"></tbody>
+      </table></div>
+    </div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button class="btn btn-primary" id="mp-add-btn" onclick="mpAddSelected()" disabled>＋ Add Selected Staff</button>
+      <button class="btn" onclick="mpLoad(true)">↻ Reload ManPower</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">Resigned staff and staff already in Team Master are hidden. Staff without a valid email can't be selected.</div>
+  </div>
   <div id="team-summary-wrap" style="margin-bottom:20px;display:none;">
     <div style="font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
       Team Overview <span class="badge" id="team-count-badge">0 teams</span>
@@ -4855,6 +4877,101 @@ function resView(id,keep){
   if(!keep)document.getElementById('res-detail').scrollIntoView({behavior:'smooth',block:'start'});
 }
 </script>
+<script>
+// ══ ADD STAFF FROM MANPOWER SHEET ══
+const MP_SHEET_ID='1xC_TtvoGVLSSarPhGdHAR5hFKsV4U61k_PMS5TVm56w',MP_GID='1713960785';
+let MP_ROWS=[],MP_LOADED=false,MP_LOADING=false;
+const MP_EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function mpCell(c){return c&&c.v!=null?String(c.v).trim():'';}
+function mpDate(c){
+  if(!c)return '';
+  let v=c.v;
+  if(typeof v==='string'&&/^Date\(/.test(v)){const m=v.match(/Date\((\d+),(\d+),(\d+)/);if(m)return m[1]+'-'+String(+m[2]+1).padStart(2,'0')+'-'+String(+m[3]).padStart(2,'0');}
+  const s=String(c.f||v||'').trim();if(!s)return '';
+  const d=new Date(s.replace(/-/g,' '));
+  if(isNaN(d))return '';
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function mpLoad(force){
+  if(MP_LOADING||(MP_LOADED&&!force))return;
+  MP_LOADING=true;
+  const st=document.getElementById('mp-status');if(st)st.textContent='Loading…';
+  const fn='__mpCb'+Date.now();
+  const sc=document.createElement('script');
+  const fail=msg=>{MP_LOADING=false;if(st)st.textContent='Load failed';toast(msg,'var(--danger)');sc.remove();delete window[fn];};
+  window[fn]=function(resp){
+    try{
+      if(resp.status!=='ok')throw new Error('bad status');
+      const rows=resp.table.rows||[];
+      MP_ROWS=rows.map(r=>{const c=r.c||[];
+        const official=mpCell(c[15]),perm=mpCell(c[27]),pers=mpCell(c[3]);
+        const email=[official,perm,pers].find(e=>MP_EMAIL_RE.test(e))||'';
+        return {empId:mpCell(c[0]),name:mpCell(c[1]),resigned:mpCell(c[2]),designation:mpCell(c[6]),dept:mpCell(c[8]),doj:mpDate(c[11]),email};
+      }).filter(r=>r.empId&&r.name&&!r.resigned);
+      MP_LOADED=true;MP_LOADING=false;
+      const depts=[...new Set(MP_ROWS.map(r=>r.dept).filter(Boolean))].sort();
+      const sel=document.getElementById('mp-dept'),cur=sel.value;
+      sel.innerHTML='<option value="">— Select department —</option>'+depts.map(d=>`<option value="${mtEsc(d)}">${mtEsc(d)}</option>`).join('');
+      sel.value=cur;
+      if(st)st.textContent=MP_ROWS.length+' active in ManPower';
+      mpRenderList();
+    }catch(e){fail('Could not read ManPower sheet');}
+    sc.remove();delete window[fn];
+  };
+  sc.onerror=()=>fail('Could not load ManPower sheet — check it is shared as "anyone with the link can view"');
+  sc.src='https://docs.google.com/spreadsheets/d/'+MP_SHEET_ID+'/gviz/tq?gid='+MP_GID+'&headers=1&tqx=responseHandler:'+fn;
+  document.head.appendChild(sc);
+}
+function mpVisible(){
+  const dept=document.getElementById('mp-dept').value;
+  const q=(document.getElementById('mp-search').value||'').trim().toLowerCase();
+  if(!dept)return [];
+  const have=new Set((DB.staff||[]).map(s=>String(s.empId).trim()));
+  return MP_ROWS.filter(r=>r.dept===dept&&!have.has(r.empId)&&(!q||r.name.toLowerCase().includes(q)||r.empId.toLowerCase().includes(q)));
+}
+function mpRenderList(){
+  const wrap=document.getElementById('mp-list-wrap'),tb=document.getElementById('mp-tbody');
+  const dept=document.getElementById('mp-dept').value;
+  if(!dept){wrap.style.display='none';mpUpdateCount();return;}
+  wrap.style.display='block';
+  const rows=mpVisible();
+  tb.innerHTML=rows.length?rows.map(r=>`<tr>
+    <td><input type="checkbox" class="mp-chk" value="${mtEsc(r.empId)}" ${r.email?'':'disabled title="No valid email"'} onchange="mpUpdateCount()"/></td>
+    <td><span style="font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700">${mtEsc(r.empId)}</span></td>
+    <td><strong>${mtEsc(r.name)}</strong></td>
+    <td style="font-size:12px;color:var(--muted)">${mtEsc(r.designation)||'—'}</td>
+    <td style="font-size:12px">${mtEsc(r.dept)}</td>
+    <td style="font-size:12px;color:var(--muted)">${r.doj?formatDate(r.doj):'—'}</td>
+    <td style="font-size:12px">${r.email?mtEsc(r.email):'<span style="color:var(--danger)">No email</span>'}</td>
+  </tr>`).join(''):'<tr><td colspan="7" class="empty-state"><p>No new staff to add in this department</p></td></tr>';
+  document.getElementById('mp-all').checked=false;
+  mpUpdateCount();
+}
+function mpToggleAll(on){document.querySelectorAll('.mp-chk:not(:disabled)').forEach(c=>c.checked=on);mpUpdateCount();}
+function mpUpdateCount(){
+  const n=document.querySelectorAll('.mp-chk:checked').length;
+  document.getElementById('mp-sel-count').textContent=n+' selected';
+  document.getElementById('mp-add-btn').disabled=!n;
+}
+async function mpAddSelected(){
+  if(typeof isAdminUser==='function'&&!isAdminUser()){toast('Only admins can add staff','var(--danger)');return;}
+  const ids=[...document.querySelectorAll('.mp-chk:checked')].map(c=>c.value);
+  const picks=MP_ROWS.filter(r=>ids.includes(r.empId)&&r.email&&!DB.staff.find(s=>String(s.empId)===r.empId));
+  if(!picks.length)return;
+  const btn=document.getElementById('mp-add-btn');btn.disabled=true;
+  toast('Adding '+picks.length+' staff…');
+  let ok=0,bad=0;
+  for(const r of picks){
+    const rec={empId:r.empId,name:r.name,designation:r.designation,team:r.dept,doj:r.doj,email:r.email};
+    try{await dbPost({action:'addStaff',...rec});DB.staff.push(rec);ok++;}
+    catch(e){bad++;}
+  }
+  renderEmpTable();populateDropdowns();renderDashboard();mpRenderList();
+  if(ok)toast('✓ '+ok+' staff added — they can sign in with Emp ID and generate a password','var(--accent2)');
+  if(bad)toast(bad+' failed to save — try again','var(--danger)');
+}
+document.querySelectorAll('.nav-item[data-page="team"]').forEach(n=>n.addEventListener('click',()=>mpLoad()));
+</script>
 </body>
 </html>
 <script>
@@ -4986,7 +5103,7 @@ function buildHeatmap() {
   let days = [];
   for (let i = 0; i < weeks * 7; i++) {
     const d = new Date(startDay); d.setDate(startDay.getDate() + i);
-    const key = d.toISOString().slice(0,10);
+    const key = aaLocal(d);
     days.push({ date: key, count: counts[key] || 0, d });
   }
   const monthLabels = [];
@@ -5368,7 +5485,7 @@ function addTrendIndicators() {
   // Build 7-day daily completion sparkline data
   const spark = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate()-i); const key = d.toISOString().slice(0,10);
+    const d = new Date(); d.setDate(d.getDate()-i); const key = aaLocal(d);
     spark.push(tasks.filter(t=>t.doneDate===key).length);
   }
 
@@ -5588,7 +5705,7 @@ window.refreshAllViews = function() {
 // ══════════════════════════════════════════════════
 
 // ── HELPERS ──────────────────────────────────────
-function getMonthRange(y,m){const s=new Date(y,m,1);const e=new Date(y,m+1,0);return{start:s.toISOString().slice(0,10),end:e.toISOString().slice(0,10)};}
+function getMonthRange(y,m){const s=new Date(y,m,1);const e=new Date(y,m+1,0);return{start:aaLocal(s),end:aaLocal(e)};}
 function daysBetween(a,b){return Math.abs((new Date(b)-new Date(a))/86400000);}
 function mthName(m){return['January','February','March','April','May','June','July','August','September','October','November','December'][m];}
 
@@ -5624,7 +5741,7 @@ function renderCalendar(){
   for(let d=1;d<=last.getDate();d++)cells.push({d:new Date(calY,calM,d),other:false});
   while(cells.length%7!==0){const last=cells[cells.length-1].d;const n=new Date(last);n.setDate(last.getDate()+1);cells.push({d:n,other:true});}
   wrap.innerHTML=cells.map(c=>{
-    const key=c.d.toISOString().slice(0,10);
+    const key=aaLocal(c.d);
     const tasks=DB.tasks.filter(t=>t.targetDate===key);
     const isToday=c.d.getTime()===now.getTime();
     const pips=tasks.slice(0,3).map(t=>{
@@ -5645,8 +5762,8 @@ function renderDigest(){
   if(!wrap)return;
   recalcStatuses();
   const now=new Date();
-  const todayKey=now.toISOString().slice(0,10);
-  const yesterKey=new Date(now-86400000).toISOString().slice(0,10);
+  const todayKey=aaLocal(now);
+  const yesterKey=aaLocal(new Date(now-86400000));
   const todayTasks=DB.tasks.filter(t=>t.targetDate===todayKey&&t.status==='Pending');
   const yestDone=DB.tasks.filter(t=>t.doneDate===yesterKey);
   const overdue=DB.tasks.filter(t=>t.status==='Missed');
@@ -5684,8 +5801,8 @@ function renderDigest(){
 function printDigest(){
   recalcStatuses();
   const now=new Date();
-  const todayKey=now.toISOString().slice(0,10);
-  const yesterKey=new Date(now-86400000).toISOString().slice(0,10);
+  const todayKey=aaLocal(now);
+  const yesterKey=aaLocal(new Date(now-86400000));
   const todayTasks=DB.tasks.filter(t=>t.targetDate===todayKey&&t.status==='Pending');
   const yestDone=DB.tasks.filter(t=>t.doneDate===yesterKey);
   const overdue=DB.tasks.filter(t=>t.status==='Missed');
@@ -5757,7 +5874,7 @@ function renderMonthly(){
   for(let w=0;w<5;w++){
     const ws=new Date(mStart);ws.setDate(mStart.getDate()+w*7);
     const we=new Date(ws);we.setDate(ws.getDate()+6);
-    const wsKey=ws.toISOString().slice(0,10),weKey=we.toISOString().slice(0,10);
+    const wsKey=aaLocal(ws),weKey=aaLocal(we);
     if(ws.getMonth()===repM)weeks.push({label:'W'+(w+1),val:done.filter(t=>t.doneDate>=wsKey&&t.doneDate<=weKey).length});
   }
   const maxW=Math.max(...weeks.map(w=>w.val),1);
