@@ -1513,6 +1513,7 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
       <div class="nav-item" data-page="status"><span class="nav-icon">◇</span><span class="nav-item-label">Task Status</span></div>
       <div class="nav-item" data-page="approvals"><span class="nav-icon">✔</span><span class="nav-item-label">Approvals</span><span class="nav-pill" id="appr-badge">0</span></div>
       <div class="nav-item" data-page="pending-works"><span class="nav-icon">⧗</span><span class="nav-item-label">Pending Works</span></div>
+      <div class="nav-item" data-page="attachments"><span class="nav-icon">📎</span><span class="nav-item-label">Attachments</span></div>
       <div class="nav-item" data-page="reminders"><span class="nav-icon">◍</span><span class="nav-item-label">Reminders</span></div>
       </div>
     </div>
@@ -1549,6 +1550,9 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
     </div>
     <div class="nav-item" data-page="pms-reports" id="nav-emp-pms" style="display:none">
       <span class="nav-icon">▤</span><span class="nav-item-label">My PMS</span>
+    </div>
+    <div class="nav-item" data-page="attachments" id="nav-emp-att" style="display:none">
+      <span class="nav-icon">📎</span><span class="nav-item-label">My Attachments</span>
     </div>
     <div class="nav-item" data-page="chat" id="nav-emp-chat" style="display:none">
       <span class="nav-icon">💬</span><span class="nav-item-label">Chats</span><span class="nav-pill chat-nav-badge">0</span>
@@ -1730,6 +1734,7 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
       <div class="form-group"><label>Task Name *</label><input id="t-name" list="task-name-list" autocomplete="off" placeholder="Select or type a new task name"/></div>
       <div class="form-group full"><label>Work Assigned</label><textarea id="t-work" placeholder="Describe the work to be completed…"></textarea></div>
       <div class="form-group"><label>Target Date *</label><input type="date" id="t-target"/></div>
+      <div class="form-group full"><label>Attachments (optional · max 5 files · 5 MB each)</label><input type="file" id="t-files" multiple/></div>
     </div>
     <div class="btn-row"><button class="btn btn-primary" onclick="assignTask()">◆ Assign Task</button><button class="btn btn-ghost" onclick="openMultiTask()">☰ Multiple Tasks (one staff)</button></div>
   </div>
@@ -2228,6 +2233,27 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
     <tbody id="bin-table"></tbody></table></div></div>
 </div>
 
+<!-- ATTACHMENTS -->
+<div class="page" id="page-attachments">
+  <div class="page-header">
+    <div class="page-title-wrap"><div class="page-title" id="att-title">Attachments</div><div class="page-sub" id="att-sub">Files attached to tasks</div></div>
+  </div>
+  <div class="section">
+    <div class="form-grid" id="att-filters">
+      <div class="form-group" id="att-emp-wrap"><label>Employee</label><select id="att-f-emp" onchange="renderAttachments()"><option value="">All Employees</option></select></div>
+      <div class="form-group"><label>Uploaded by</label><select id="att-f-by" onchange="renderAttachments()"><option value="">Anyone</option><option value="Admin">Admin</option><option value="Employee">Employee</option></select></div>
+      <div class="form-group"><label>Search</label><input id="att-f-q" oninput="renderAttachments()" placeholder="File name or task…"/></div>
+    </div>
+    <div class="section-title">Files <span class="badge" id="att-count">0</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>File</th><th>Task</th><th>Employee</th><th>Uploaded by</th><th>Date</th><th>Size</th><th></th></tr></thead>
+        <tbody id="att-table"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- CHATS -->
 <div class="page" id="page-chat">
   <div class="page-header">
@@ -2499,7 +2525,7 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
     </div>
     <div class="table-wrap">
       <table style="min-width:860px">
-        <thead><tr><th style="width:26%">Task Name *</th><th style="width:12%">Type *</th><th style="width:16%">Area</th><th style="width:26%">Work Assigned</th><th style="width:15%">Target Date *</th><th></th></tr></thead>
+        <thead><tr><th style="width:26%">Task Name *</th><th style="width:12%">Type *</th><th style="width:16%">Area</th><th style="width:26%">Work Assigned</th><th style="width:15%">Target Date *</th><th style="width:14%">Files</th><th></th></tr></thead>
         <tbody id="mt-rows"></tbody>
       </table>
     </div>
@@ -2519,6 +2545,7 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
     <div class="form-group" style="margin-bottom:14px"><label>User Remarks *</label><textarea id="modal-remarks" placeholder="Describe what was completed…"></textarea></div>
     <div class="form-group" style="margin-bottom:14px"><label>Completed Date *</label><input type="date" id="modal-date"/></div>
     <div class="form-group" style="margin-bottom:14px"><label>Action Date (recorded automatically)</label><input id="modal-action" readonly/></div>
+    <div class="form-group" style="margin-bottom:14px"><label>Attach files (optional · max 5 · 5 MB each)</label><input type="file" id="modal-files" multiple/></div>
     <div class="appr-banner await" style="margin:0 0 18px">⏳ Your manager will review this. The task counts as <b>Completed</b> and KPI is awarded only after approval; if it is sent back you will see the reason and can resubmit.</div>
     <div class="btn-row">
       <button class="btn btn-success" onclick="submitUpdate()">✓ Submit for Approval</button>
@@ -2668,7 +2695,7 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
 
 <script>
 const DB_URL='https://script.google.com/macros/s/AKfycbxz0im6XRfFn7t70zF6GKjg7DXg573zFOP5Hvu4XXUQlilyn-lYB2stLOTzzfduc7xPNw/exec';
-let DB={staff:[],resigned:[],rTasks:[],rPW:[],aow:[],tasks:[],pendingWorks:[],reminders:[],taskMaster:[],comments:[],templates:[],seen:{},holidays:[],holidaySet:{},leaves:[],competencies:[],settings:{weeklyOff:[0]}};
+let DB={staff:[],resigned:[],rTasks:[],rPW:[],aow:[],tasks:[],pendingWorks:[],reminders:[],taskMaster:[],comments:[],uploads:[],templates:[],seen:{},holidays:[],holidaySet:{},leaves:[],competencies:[],settings:{weeklyOff:[0]}};
 let dbConnected=false;
 
 let authToken='';
@@ -2704,6 +2731,7 @@ async function fullSync(){
     if(d.reminders&&Array.isArray(d.reminders)){DB.reminders=d.reminders.map(r=>({id:String(r.REM_ID||r.id||''),sentDate:String(r.SENT_DATE||r.sentDate||''),empId:String(r.EMP_ID||r.empId||''),empName:String(r.EMP_NAME||r.empName||''),taskId:String(r.TASK_ID||r.taskId||''),taskName:String(r.TASK_NAME||r.taskName||''),message:String(r.MESSAGE||r.message||''),seen:String(r.SEEN||r.seen||'No')})).filter(r=>r.id);}
     if(d.taskMaster&&Array.isArray(d.taskMaster)){DB.taskMaster=d.taskMaster.map(m=>({name:String(m.TASK_NAME||m.name||'').trim(),createdDate:String(m.CREATED_DATE||m.createdDate||'')})).filter(m=>m.name);}
     if(Array.isArray(d.comments)){DB.comments=d.comments.map(c=>({id:String(c.COMMENT_ID||''),taskId:String(c.TASK_ID||''),authorId:String(c.AUTHOR_ID||''),author:String(c.AUTHOR_NAME||''),isAdmin:String(c.IS_ADMIN)==='Yes',text:String(c.TEXT||''),createdAt:String(c.CREATED_AT||'')})).filter(c=>c.id);}
+    if(Array.isArray(d.uploads)){DB.uploads=d.uploads.map(u=>({taskId:String(u.TASK_ID||''),name:String(u.FILE_NAME||''),url:String(u.FILE_URL||''),on:String(u.UPLOADED_ON||''),fileId:String(u.FILE_ID||''),by:String(u.UPLOADED_BY||''),byId:String(u.UPLOADED_BY_ID||''),role:String(u.ROLE||''),size:Number(u.SIZE)||0,mime:String(u.MIME||'')})).filter(u=>u.taskId&&u.name);}
     if(Array.isArray(d.templates)){DB.templates=d.templates.map(t=>({id:String(t.TPL_ID||''),name:String(t.NAME||''),work:String(t.WORK||''),type:String(t.TYPE||''),area:String(t.AREA||'')})).filter(t=>t.id);}
     if(Array.isArray(d.seen)){const sn={};d.seen.forEach(x=>{sn[String(x)]=1;});seenPending.forEach(x=>{sn[x]=1;});DB.seen=sn;}
     if(Array.isArray(d.holidays)){DB.holidays=d.holidays.map(h=>({date:fmtDate(h.DATE),name:String(h.NAME||'')})).filter(h=>h.date);}
@@ -3005,15 +3033,19 @@ async function assignTask(){
   const area=document.getElementById('t-area').value;const ttype=document.getElementById('t-type').value;
   const tname=document.getElementById('t-name').value.trim();const work=document.getElementById('t-work').value.trim();
   const target=document.getElementById('t-target').value;
+  const files=[...(document.getElementById('t-files')?.files||[])];
   if(!tname||!target){toast('Task Name and Target Date required','var(--danger)');return;}
   const id='T'+String(Date.now()).slice(-6);const today=todayStr();
   DB.tasks.push({id,assignedDate:today,empId,name,area,taskType:ttype,taskName:tname,workAssigned:work,targetDate:target,userRemarks:'',completedDate:'',status:'Pending',kpi:'',score:'',adminRemarks:''});
   renderTaskTable();renderDashboard();toast('Saving task…');
   try{
     const r=await dbPost({action:'assignTask',empId,name,area,taskType:ttype,taskName:tname,workAssigned:work,targetDate:target});
-    if(r?.result&&typeof r.result==='string'&&r.result.startsWith('T')){const t=DB.tasks.find(x=>x.id===id);if(t)t.id=r.result;}
+    let realId=id;
+    if(r?.result&&typeof r.result==='string'&&r.result.startsWith('T')){realId=r.result;const t=DB.tasks.find(x=>x.id===id);if(t)t.id=realId;}
     toast('✓ Task saved','var(--accent2)');
+    if(files.length)await attUploadFiles(realId,files);
   }catch(e){toast('Saved locally. DB sync failed.','var(--accent3)');}
+  const tf=document.getElementById('t-files');if(tf)tf.value='';
   ['t-name','t-work','t-target'].forEach(x=>document.getElementById(x).value='');
   document.getElementById('t-emp').value='';document.getElementById('t-area').innerHTML='<option>— Select employee first —</option>';
   renderTaskTable();updateTaskCount();
@@ -3048,6 +3080,7 @@ function mtAddRow(){
     <td><select class="mt-area" style="width:100%">${mtAreaOptions(empId,'')}</select></td>
     <td><input class="mt-work" placeholder="Describe the work…" style="width:100%"/></td>
     <td><input type="date" class="mt-target" style="width:100%"/></td>
+    <td><input type="file" class="mt-files" multiple style="width:100%;font-size:11px"/></td>
     <td><button class="btn btn-ghost btn-sm" title="Remove row" onclick="this.closest('tr').remove()">✕</button></td>`;
   document.getElementById('mt-rows').appendChild(tr);
 }
@@ -3063,7 +3096,7 @@ async function submitMultiTask(){
     if(!taskName&&!work&&!target)return; // empty row, ignore
     if(!taskName||!target){bad=true;tr.style.background='var(--danger-light)';return;}
     tr.style.background='';
-    items.push({taskName,work,target,taskType:tr.querySelector('.mt-type').value,area:tr.querySelector('.mt-area').value});
+    items.push({taskName,work,target,taskType:tr.querySelector('.mt-type').value,area:tr.querySelector('.mt-area').value,files:[...(tr.querySelector('.mt-files')?.files||[])]});
   });
   if(bad){toast('Each filled row needs Task Name and Target Date','var(--danger)');return;}
   if(!items.length){toast('Add at least one task','var(--danger)');return;}
@@ -3080,6 +3113,7 @@ async function submitMultiTask(){
     try{
       const r=await dbPost({action:'assignTask',empId,name,area:it.area,taskType:it.taskType,taskName:it.taskName,workAssigned:it.work,targetDate:it.target});
       if(r?.result&&typeof r.result==='string'&&r.result.startsWith('T'))added[i].id=r.result;
+      if(it.files&&it.files.length)await attUploadFiles(added[i].id,it.files);
     }catch(e){failed++;}
   }
   btn.disabled=false;
@@ -3467,6 +3501,11 @@ function renderReminders(){
   </div>`).join('')||'<div class="empty-state"><div class="ei">✓</div><p>No pending or missed tasks</p></div>';
 }
 function fillRemEmp(){const t=DB.tasks.find(x=>x.id===document.getElementById('rem-task').value);document.getElementById('rem-emp-name').value=t?t.name:'';}
+function remindToast(r,name){
+  const x=r&&r.result;
+  if(x&&x.emailed)toast(`✓ Reminder saved & emailed to ${name}`,'var(--accent2)');
+  else toast(`✓ Reminder saved — email not sent${x&&x.emailError?' ('+x.emailError+')':''}`,'var(--accent3)');
+}
 async function sendReminder(){
   const id=document.getElementById('rem-task').value;const msg=document.getElementById('rem-msg').value.trim();
   if(!id||!msg){toast('Select a task and write a message','var(--danger)');return;}
@@ -3476,9 +3515,9 @@ async function sendReminder(){
   DB.reminders.push(remObj);renderSentReminders();
   toast('⊙ Sending reminder…','var(--accent3)');
   try{
-    await dbPost({action:'addReminder',remId:remId,empId:t.empId,empName:t.name,
+    const rr=await dbPost({action:'addReminder',remId:remId,empId:t.empId,empName:t.name,
       taskId:t.id,taskName:t.taskName,message:msg,sentDate:todayStr()});
-    toast('✓ Reminder saved to Google Sheet','var(--accent2)');
+    remindToast(rr,t.name);
   }catch(e){
     console.error('Reminder DB error:',e);
     toast('Reminder saved locally only — DB sync failed.','var(--accent3)');
@@ -3494,7 +3533,7 @@ async function quickRemind(id){
   try{
     const res=await dbPost({action:'addReminder',remId,empId:t.empId,empName:t.name,
       taskId:t.id,taskName:t.taskName,message:msg,sentDate:todayStr()});
-    toast(`✓ Reminder saved & sent to ${t.name}`,'var(--accent2)');
+    remindToast(res,t.name);
   }catch(e){
     toast(`Reminder local only — DB sync failed`,'var(--accent3)');
   }
@@ -3502,7 +3541,7 @@ async function quickRemind(id){
 
 function loadEmpTasks(){if(currentUser&&currentUser.role==='employee'){loadEmpTasksForId(currentUser.empId);}else{renderAdminEmpView();}}
 
-function openUpdateModal(id){document.getElementById('modal-task-id').value=id;document.getElementById('modal-remarks').value='';document.getElementById('modal-date').value=todayStr();document.getElementById('modal-action').value=fmtDateTime(nowStamp());document.getElementById('update-modal').classList.add('open');}
+function openUpdateModal(id){const mf=document.getElementById('modal-files');if(mf)mf.value='';document.getElementById('modal-task-id').value=id;document.getElementById('modal-remarks').value='';document.getElementById('modal-date').value=todayStr();document.getElementById('modal-action').value=fmtDateTime(nowStamp());document.getElementById('update-modal').classList.add('open');}
 function openRemarkModal(id){
   const t=DB.tasks.find(x=>x.id===id);
   document.getElementById('remark-task-id').value=id;document.getElementById('remark-text').value=t?.adminRemarks||'';
@@ -3559,12 +3598,14 @@ async function submitUpdate(){
   const remarks=document.getElementById('modal-remarks').value.trim();
   const date=document.getElementById('modal-date').value;
   if(!remarks||!date){toast('Fill all fields','var(--danger)');return;}
+  const upFiles=[...(document.getElementById('modal-files')?.files||[])];
   const t=DB.tasks.find(x=>x.id===id);
   if(t){t.userRemarks=remarks;t.completedDate=date;t.actionDate=nowStamp();t.approval='Submitted';t.reviewRemark='';t.reviewedBy='';t.reviewedAt='';}
   recalcStatuses();loadEmpTasks();closeModal('update-modal');toast('Saving…');
   try{
     await dbPost({action:'updateTask',taskId:id,userRemarks:remarks,completedDate:date});
     toast('✓ Submitted for manager approval','var(--accent2)');
+    if(upFiles.length)await attUploadFiles(id,upFiles);
   }catch(e){toast('Updated locally. DB sync failed.','var(--accent3)');}
 
   renderDashboard();renderStatusTable();
@@ -4171,7 +4212,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 function resetDB(){
   DB.staff=[];DB.resigned=[];DB.rTasks=[];DB.rPW=[];DB.aow=[];DB.tasks=[];DB.pendingWorks=[];DB.reminders=[];DB.taskMaster=[];
-  DB.comments=[];DB.templates=[];DB.seen={};DB.holidays=[];DB.holidaySet={};DB.leaves=[];DB.competencies=[];
+  DB.comments=[];DB.uploads=[];DB.templates=[];DB.seen={};DB.holidays=[];DB.holidaySet={};DB.leaves=[];DB.competencies=[];
   DB.settings={weeklyOff:[0]};
 }
 
@@ -4197,6 +4238,7 @@ function startSession(){
     document.getElementById('nav-emp-dash').style.display='flex';
     document.getElementById('nav-emp-pending').style.display='flex';
     document.getElementById('nav-emp-pms').style.display='flex';
+    document.getElementById('nav-emp-att').style.display='flex';
     showPage('emp-dash');fullSync().then(()=>{renderEmpDashboard();checkAndShowSplash();});
   }
 }
@@ -4213,6 +4255,7 @@ function doLogout(){
   document.getElementById('nav-emp-dash').style.display='none';
   document.getElementById('nav-emp-pending').style.display='none';
   document.getElementById('nav-emp-pms').style.display='none';
+  document.getElementById('nav-emp-att').style.display='none';
   document.getElementById('reminder-splash').style.display='none';
   ['stat-modal','task-detail-modal','update-modal'].forEach(id=>{const e=document.getElementById(id);if(e)e.classList.remove('open');});
 }
@@ -4297,7 +4340,7 @@ function renderEmpDashboard(){
 document.querySelectorAll('.nav-item').forEach(el=>{
   el.addEventListener('click',()=>{
     const page=el.dataset.page;
-    if(currentUser&&currentUser.role==='employee'&&page!=='emp'&&page!=='emp-dash'&&page!=='pending-works'&&page!=='pms-reports'&&page!=='chat')return;
+    if(currentUser&&currentUser.role==='employee'&&page!=='emp'&&page!=='emp-dash'&&page!=='pending-works'&&page!=='pms-reports'&&page!=='chat'&&page!=='attachments')return;
     document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.page').forEach(x=>{
       if(x.id==='page-pending-works'){x.style.display='none';x.classList.remove('active');}
@@ -4325,6 +4368,7 @@ document.querySelectorAll('.nav-item').forEach(el=>{
     if(page==='recycle')loadRecycle();
     if(page==='resigned')renderResigned();
     if(page==='reports-hub')renderReportsHub();
+    if(page==='attachments')renderAttachments();
   });
 });
 
@@ -5537,11 +5581,13 @@ window.openTaskDetailModal = function(id) {
       </div>
     </div>`;
   }
+  extraHTML += `<div id="att-detail-${id}" style="margin-bottom:16px"></div>`;
   extraHTML += `<div id="comments-thread-${id}" style="margin-bottom:16px"></div>`;
   const tdm = document.getElementById('tdm-content');
   const actions = tdm.querySelector('.tdm-actions');
   if (actions) actions.insertAdjacentHTML('beforebegin', extraHTML);
   renderCommentsThread(id, 'comments-thread-'+id);
+  attRenderDetail(id);
 };
 
 // ── PATCH loadEmpTasksForId to add drag handles ───────────────
@@ -7902,5 +7948,143 @@ window.refreshAllViews=function(){_rav.apply(this,arguments);const p=$('page-rep
     _err.apply(this,arguments);
     const c=document.querySelector('.login-card');if(c){c.classList.remove('shake');void c.offsetWidth;c.classList.add('shake');setTimeout(()=>c.classList.remove('shake'),600);}
   };
+})();
+</script>
+
+<script>
+// ═══ ATTACHMENTS ═══
+const ATT_MAX=5*1024*1024,ATT_MAX_FILES=5;
+function attSize(n){n=Number(n)||0;return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n?n+' B':'—';}
+function attB64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]||'');r.onerror=()=>rej(r.error);r.readAsDataURL(file);});}
+function attBusy(on,msg,pct){
+  let el=document.getElementById('att-busy');
+  if(!el){
+    document.head.insertAdjacentHTML('beforeend','<style>@keyframes attspin{to{transform:rotate(360deg)}}@keyframes attstripe{to{background-position:28px 0}}#att-busy{position:fixed;inset:0;z-index:100000;background:rgba(15,20,35,.55);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center}#att-busy .ab-card{background:var(--card,#fff);color:var(--text,#111);border-radius:14px;padding:26px 34px;min-width:280px;max-width:90vw;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}#att-busy .ab-spin{width:44px;height:44px;margin:0 auto 14px;border:4px solid var(--border,#ddd);border-top-color:var(--accent,#4263eb);border-radius:50%;animation:attspin .8s linear infinite}#att-busy .ab-bar{height:8px;border-radius:8px;background:var(--border,#e3e3e3);overflow:hidden;margin-top:14px}#att-busy .ab-fill{height:100%;width:0;background:repeating-linear-gradient(45deg,var(--accent,#4263eb) 0 10px,var(--accent2,#2f9e44) 10px 20px);background-size:28px 28px;animation:attstripe .6s linear infinite;transition:width .3s}</style>');
+    document.body.insertAdjacentHTML('beforeend','<div id="att-busy"><div class="ab-card"><div class="ab-spin"></div><div id="att-busy-t" style="font-weight:700;font-size:14px">Uploading…</div><div id="att-busy-s" style="font-size:12px;color:var(--muted,#777);margin-top:4px;word-break:break-all"></div><div class="ab-bar"><div class="ab-fill" id="att-busy-f"></div></div><div style="font-size:11px;color:var(--muted,#777);margin-top:10px">Please wait — don\'t close or refresh this page</div></div></div>');
+    el=document.getElementById('att-busy');
+  }
+  if(on){document.getElementById('att-busy-t').textContent=msg[0];document.getElementById('att-busy-s').textContent=msg[1]||'';document.getElementById('att-busy-f').style.width=(pct||0)+'%';el.style.display='flex';}
+  else el.style.display='none';
+}
+async function attUploadFiles(taskId,files){
+  files=[...files];
+  if(files.length>ATT_MAX_FILES){toast(`Only first ${ATT_MAX_FILES} files uploaded`,'var(--accent3)');files=files.slice(0,ATT_MAX_FILES);}
+  let ok=0,n=0;
+  try{
+  for(const f of files){
+    if(f.size>ATT_MAX){toast(`${f.name}: larger than 5 MB — skipped`,'var(--danger)');continue;}
+    try{
+      n++;attBusy(true,[`Uploading file ${n} of ${files.length}`,f.name],Math.round((n-1)/files.length*100)+8);
+      const r=await dbPost({action:'uploadFile',taskId,fileName:f.name,mime:f.type||'application/octet-stream',data:await attB64(f)});
+      const x=r.result||{};
+      DB.uploads.push({taskId,name:x.fileName||f.name,url:'',on:new Date().toISOString().slice(0,16).replace('T',' '),fileId:x.fileId||'',by:currentUser.role==='admin'?'Admin':(currentUser.displayName||currentUser.username||''),byId:currentUser.empId||'',role:currentUser.role==='admin'?'Admin':'Employee',size:f.size,mime:f.type});
+      ok++;
+    }catch(e){toast(`${f.name}: upload failed — ${e.message}`,'var(--danger)');}
+  }
+  }finally{attBusy(false);}
+  if(ok)toast(`✓ ${ok} file${ok>1?'s':''} attached`,'var(--accent2)');
+  attRefreshViews(taskId);
+}
+function attRefreshViews(taskId){
+  attRenderDetail(taskId);
+  const pg=document.getElementById('page-attachments');if(pg&&pg.classList.contains('active'))renderAttachments();
+}
+async function attDownload(fileId,fallbackUrl){
+  if(!fileId){if(fallbackUrl)window.open(fallbackUrl,'_blank');return;}
+  try{
+    attBusy(true,['Preparing download…',''],60);
+    const r=await dbPost({action:'getFile',fileId});const x=r.result;
+    const bin=atob(x.data);const arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([arr],{type:x.mime||'application/octet-stream'}));
+    const a=document.createElement('a');a.href=url;a.download=x.fileName||'file';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    attBusy(false);toast('✓ Downloaded','var(--accent2)');
+  }catch(e){attBusy(false);toast('Download failed — '+e.message,'var(--danger)');}
+}
+async function attDelete(fileId,taskId){
+  if(!fileId||!confirm('Delete this attachment?'))return;
+  try{await dbPost({action:'deleteAttachment',fileId});DB.uploads=DB.uploads.filter(u=>u.fileId!==fileId);toast('✓ Attachment deleted','var(--accent2)');attRefreshViews(taskId);}
+  catch(e){toast('Delete failed — '+e.message,'var(--danger)');}
+}
+function attRow(u,showTask){
+  const t=DB.tasks.find(x=>x.id===u.taskId);
+  const del=currentUser&&currentUser.role==='admin'&&u.fileId?`<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="attDelete('${mtEsc(u.fileId)}','${mtEsc(u.taskId)}')">🗑</button>`:'';
+  return `<tr><td>📎 ${mtEsc(u.name)}</td>${showTask?`<td><a href="#" onclick="openTaskDetailModal('${mtEsc(u.taskId)}');return false">${mtEsc(u.taskId)}</a><br><span style="font-size:11px;color:var(--muted)">${mtEsc(t?t.taskName:'')}</span></td><td>${mtEsc(t?t.name:'')}</td>`:''}<td>${mtEsc(u.by||'—')}${u.role?` <span style="font-size:10px;color:var(--muted)">(${mtEsc(u.role)})</span>`:''}</td><td>${fmtDateTime(u.on)||'—'}</td><td>${attSize(u.size)}</td><td style="white-space:nowrap"><button class="btn btn-primary btn-sm" onclick="attDownload('${mtEsc(u.fileId)}','${mtEsc(u.url)}')">⬇ Download</button> ${del}</td></tr>`;
+}
+function renderAttachments(){
+  const isAdm=currentUser&&currentUser.role==='admin';
+  const ttl=document.getElementById('att-title');if(ttl)ttl.textContent=isAdm?'Attachments':'My Attachments';
+  const ew=document.getElementById('att-emp-wrap');if(ew)ew.style.display=isAdm?'':'none';
+  const sel=document.getElementById('att-f-emp');
+  if(isAdm&&sel){const cur=sel.value;sel.innerHTML='<option value="">All Employees</option>'+DB.staff.map(s=>`<option value="${mtEsc(s.empId)}" ${s.empId===cur?'selected':''}>${mtEsc(s.name)}</option>`).join('');}
+  const fEmp=isAdm&&sel?sel.value:'';const fBy=document.getElementById('att-f-by').value;const q=(document.getElementById('att-f-q').value||'').toLowerCase();
+  let list=DB.uploads.filter(u=>{
+    const t=DB.tasks.find(x=>x.id===u.taskId);
+    if(!isAdm&&t&&t.empId!==currentUser.empId)return false;
+    if(fEmp&&(!t||t.empId!==fEmp))return false;
+    if(fBy&&u.role!==fBy)return false;
+    if(q&&!(u.name.toLowerCase().includes(q)||u.taskId.toLowerCase().includes(q)||(t&&t.taskName.toLowerCase().includes(q))))return false;
+    return true;
+  }).sort((a,b)=>String(b.on).localeCompare(String(a.on)));
+  document.getElementById('att-count').textContent=list.length;
+  document.getElementById('att-table').innerHTML=list.length?list.map(u=>attRow(u,true)).join(''):'<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No attachments yet</td></tr>';
+}
+function attRenderDetail(taskId){
+  const el=document.getElementById('att-detail-'+taskId);if(!el)return;
+  const list=DB.uploads.filter(u=>u.taskId===taskId);
+  el.innerHTML=`<div class="tdm-section"><div class="tdm-section-label">Attachments (${list.length})</div>`+
+    (list.length?`<div class="table-wrap"><table><tbody>${list.map(u=>attRow(u,false)).join('')}</tbody></table></div>`:'<div style="font-size:12px;color:var(--muted)">No files attached</div>')+
+    `<div style="margin-top:8px"><input type="file" id="att-add-${taskId}" multiple style="font-size:12px"/> <button class="btn btn-ghost btn-sm" onclick="attAddFromDetail('${mtEsc(taskId)}')">＋ Attach</button></div></div>`;
+}
+async function attAddFromDetail(taskId){
+  const inp=document.getElementById('att-add-'+taskId);if(!inp||!inp.files.length){toast('Choose a file first','var(--danger)');return;}
+  await attUploadFiles(taskId,inp.files);
+}
+</script>
+
+<script>
+// ═══ NOTIFICATIONS: toast + sound on new reminders / tasks / attachments ═══
+(function(){
+  let AC2=null;const st={user:null,keys:new Set()};
+  const sndOn=()=>{try{return localStorage.getItem('chatSnd')!=='0';}catch(e){return true;}};
+  function ding(){
+    if(!sndOn())return;
+    try{AC2=AC2||new(window.AudioContext||window.webkitAudioContext)();if(AC2.state==='suspended')AC2.resume();
+      const t=AC2.currentTime;[880,1175,1480].forEach((f,i)=>{const o=AC2.createOscillator(),g=AC2.createGain();o.type='sine';o.frequency.value=f;
+        const t0=t+i*.12;g.gain.setValueAtTime(0.0001,t0);g.gain.linearRampToValueAtTime(0.09,t0+.02);g.gain.exponentialRampToValueAtTime(0.0001,t0+.25);
+        o.connect(g);g.connect(AC2.destination);o.start(t0);o.stop(t0+.27);});}catch(e){}
+  }
+  window.notifyDing=ding;
+  function collect(){
+    const out=[];if(!currentUser)return out;const emp=currentUser.role==='employee';
+    if(emp){
+      DB.reminders.filter(r=>r.empId===currentUser.empId&&r.seen!=='Yes').forEach(r=>out.push({k:'R'+r.id,m:'⊙ Reminder: '+(r.taskName||r.taskId||'')+(r.message?' — '+r.message:''),c:'var(--accent3)'}));
+      DB.tasks.filter(t=>t.empId===currentUser.empId).forEach(t=>out.push({k:'T'+t.id,m:'◆ New task assigned: '+t.taskName,c:'var(--accent)'}));
+      DB.uploads.filter(u=>u.role==='Admin').forEach(u=>out.push({k:'U'+u.fileId+u.taskId+u.name,m:'📎 New attachment: '+u.name,c:'var(--accent)'}));
+    }else{
+      DB.uploads.filter(u=>u.role==='Employee').forEach(u=>out.push({k:'U'+u.fileId+u.taskId+u.name,m:'📎 '+u.by+' attached '+u.name,c:'var(--accent)'}));
+    }
+    return out;
+  }
+  function check(){
+    if(!currentUser)return;
+    const items=collect();
+    if(st.user!==currentUser.username){ // first sync after login: seed only
+      st.user=currentUser.username;items.forEach(i=>st.keys.add(i.k));
+      if(currentUser.role==='employee'&&items.some(i=>i.k[0]==='R'))ding(); // splash shows these
+      return;
+    }
+    const fresh=items.filter(i=>!st.keys.has(i.k));fresh.forEach(i=>st.keys.add(i.k));
+    if(!fresh.length)return;
+    ding();
+    fresh.slice(0,3).forEach((i,n)=>setTimeout(()=>toast(i.m,i.c),n*2600));
+    if(fresh.length>3)setTimeout(()=>toast('+ '+(fresh.length-3)+' more notifications','var(--accent3)'),3*2600);
+    if(currentUser.role==='employee'&&fresh.some(i=>i.k[0]==='R'))checkAndShowSplash();
+  }
+  const _fs=window.fullSync;
+  window.fullSync=async function(){const r=await _fs.apply(this,arguments);try{check();}catch(e){}return r;};
+  const _lo=window.doLogout;
+  window.doLogout=function(){st.user=null;st.keys=new Set();return _lo.apply(this,arguments);};
+  setInterval(()=>{if(typeof dbConnected!=='undefined'&&dbConnected&&currentUser&&!document.hidden)window.fullSync();},60*1000);
 })();
 </script>
