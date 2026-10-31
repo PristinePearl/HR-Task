@@ -2714,6 +2714,9 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
 const DB_URL='https://script.google.com/macros/s/AKfycbxz0im6XRfFn7t70zF6GKjg7DXg573zFOP5Hvu4XXUQlilyn-lYB2stLOTzzfduc7xPNw/exec';
 let DB={staff:[],resigned:[],rTasks:[],rPW:[],aow:[],tasks:[],pendingWorks:[],reminders:[],taskMaster:[],comments:[],uploads:[],templates:[],seen:{},holidays:[],holidaySet:{},leaves:[],competencies:[],settings:{weeklyOff:[0]}};
 let dbConnected=false;
+let ADMIN_NAME='';
+function adminDisp(){const n=String(ADMIN_NAME||(currentUser&&currentUser.role==='admin'?(currentUser.displayName||currentUser.username):'')||'').trim();return !n||/^(hr\s*)?admin$/i.test(n)?'Admin':'Admin - '+n.replace(/^admin\s*[-·:]\s*/i,'');}
+function personName(n){n=String(n==null?'':n).trim();return /^(hr\s*)?admin$/i.test(n)?adminDisp():n;}
 
 let authToken='';
 function handleAuthError(code){
@@ -2757,6 +2760,7 @@ async function fullSync(){
     {const rs={};DB.resigned.forEach(s=>{rs[s.empId]=1;});DB.rTasks=DB.tasks.filter(t=>rs[t.empId]);DB.tasks=DB.tasks.filter(t=>!rs[t.empId]);DB.rPW=DB.pendingWorks.filter(p=>rs[p.empId]);DB.pendingWorks=DB.pendingWorks.filter(p=>!rs[p.empId]);}
     if(d.settings){const raw=d.settings.WEEKLY_OFF===undefined?'0':String(d.settings.WEEKLY_OFF);DB.settings.weeklyOff=raw.split(',').map(x=>x.trim()).filter(x=>x!=='').map(Number).filter(x=>x>=0&&x<=6);}
     DB.holidaySet={};DB.holidays.forEach(h=>{DB.holidaySet[h.date]=1;});
+    if(d.adminName)ADMIN_NAME=String(d.adminName);
     if(currentUser&&d.me&&d.me.displayName&&!currentUser.displayName)currentUser.displayName=d.me.displayName;
 recalcStatuses();setConnected(true);refreshAllViews();
     autoAllotRecurring();
@@ -5331,17 +5335,17 @@ function renderCommentsThread(taskId, containerId) {
   if (!el) return;
   const comments = getComments(taskId);
   const isAdmin = currentUser?.role === 'admin';
-  const authorName = isAdmin ? 'Admin' : (DB.staff.find(s=>s.empId===currentUser?.empId)?.name || currentUser?.displayName || 'Employee');
+  const authorName = isAdmin ? adminDisp() : (DB.staff.find(s=>s.empId===currentUser?.empId)?.name || currentUser?.displayName || 'Employee');
 
   el.innerHTML = `
     <div style="font-size:10px;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-weight:600;margin-bottom:10px">Comments</div>
     <div id="comments-list-${taskId}" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
       ${comments.length ? comments.map(c=>`
         <div style="display:flex;gap:8px;animation:fadeUp .2s ease">
-          <div style="width:28px;height:28px;border-radius:50%;background:${c.isAdmin?'var(--accent)':'var(--accent2)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${mtEsc(c.author).slice(0,2).toUpperCase()}</div>
+          <div style="width:28px;height:28px;border-radius:50%;background:${c.isAdmin?'var(--accent)':'var(--accent2)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${mtEsc(c.isAdmin?adminDisp():personName(c.author)).slice(0,2).toUpperCase()}</div>
           <div style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:8px 10px">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
-              <span style="font-size:11px;font-weight:700;color:${c.isAdmin?'var(--accent)':'var(--accent2)'}">${mtEsc(c.author)}</span>
+              <span style="font-size:11px;font-weight:700;color:${c.isAdmin?'var(--accent)':'var(--accent2)'}">${mtEsc(c.isAdmin?adminDisp():personName(c.author))}</span>
               <span style="font-size:10px;color:var(--muted2);font-family:var(--mono)">${mtEsc(fmtCommentTime(c.createdAt))}</span>
             </div>
             <div style="font-size:13px;color:var(--text2);line-height:1.5">${mtEsc(c.text)}</div>
@@ -7386,8 +7390,8 @@ function teamList(){
   if(isAdm())return[...new Set(dirList().map(s=>s.team).filter(Boolean))].sort();
   const t=myTeam();return t?[t]:[];
 }
-function adminLabel(n){n=String(n||'').trim();return(!n||/^(hr\s*)?admin$/i.test(n))?'Admin':'Admin · '+n.replace(/^(hr\s*)?admin\s*[·:-]\s*/i,'');}
-function adminName(){if(isAdm())return adminLabel(meName());const ad=CH.dir.find(s=>s.empId==='ADMIN');return adminLabel(ad&&ad.name);}
+function adminLabel(n){return personName(n)||adminDisp();}
+function adminName(){if(isAdm())return adminDisp();const ad=CH.dir.find(s=>s.empId==='ADMIN');return adminLabel(ad&&ad.name);}
 function senderName(m){return m.from==='ADMIN'?adminName():m.name;}
 function contactList(){
   const a=dirList().filter(s=>s.empId&&s.empId!=='ADMIN'&&s.empId!==me()).map(s=>({id:s.empId,name:s.name||s.empId,sub:s.designation||s.team||''}));
@@ -7428,7 +7432,7 @@ function renderBadge(){
   CH.lastBadge=n;
 }
 function itemHtml(ch,meta,last,un){
-  const prev=last?((last.from===me()?'You: ':(meta.team?(last.from==='ADMIN'?'Admin':String(last.name||'').split(' ')[0])+': ':''))+last.text):(meta.sub||'');
+  const prev=last?((last.from===me()?'You: ':(meta.team?(last.from==='ADMIN'?adminName():String(last.name||'').split(' ')[0])+': ':''))+last.text):(meta.sub||'');
   const fl=CH.flash&&CH.flash[ch];
   return`<div class="chat-item${ch===CH.active?' active':''}${fl?' flash':''}" data-ch="${esc(ch)}"><div class="chat-av${meta.team?' team':''}" style="background:${meta.color}">${esc(meta.av)}</div><div class="chat-meta"><div class="chat-name">${esc(meta.title)}</div><div class="chat-prev">${esc(prev)}</div></div>${un?`<span class="chat-unread${fl?' pop':''}">${un>99?'99+':un}</span>`:''}</div>`;
 }
@@ -8028,7 +8032,7 @@ async function attUploadFiles(taskId,files){
       n++;attBusy(true,[`Uploading file ${n} of ${files.length}`,f.name],Math.round((n-1)/files.length*100)+8);
       const r=await dbPost({action:'uploadFile',taskId,fileName:f.name,mime:f.type||'application/octet-stream',data:await attB64(f)});
       const x=r.result||{};
-      DB.uploads.push({taskId,name:x.fileName||f.name,url:'',on:new Date().toISOString().slice(0,16).replace('T',' '),fileId:x.fileId||'',by:currentUser.role==='admin'?'Admin':(currentUser.displayName||currentUser.username||''),byId:currentUser.empId||'',role:currentUser.role==='admin'?'Admin':'Employee',size:f.size,mime:f.type});
+      DB.uploads.push({taskId,name:x.fileName||f.name,url:'',on:new Date().toISOString().slice(0,16).replace('T',' '),fileId:x.fileId||'',by:currentUser.displayName||currentUser.username||'',byId:currentUser.empId||'',role:currentUser.role==='admin'?'Admin':'Employee',size:f.size,mime:f.type});
       ok++;
     }catch(e){toast(`${f.name}: upload failed — ${e.message}`,'var(--danger)');}
   }
@@ -8060,7 +8064,7 @@ async function attDelete(fileId,taskId){
 function attRow(u,showTask){
   const t=DB.tasks.find(x=>x.id===u.taskId);
   const del=currentUser&&currentUser.role==='admin'&&u.fileId?`<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="attDelete('${mtEsc(u.fileId)}','${mtEsc(u.taskId)}')">🗑</button>`:'';
-  return `<tr><td>📎 ${mtEsc(u.name)}</td>${showTask?`<td><a href="#" onclick="openTaskDetailModal('${mtEsc(u.taskId)}');return false">${mtEsc(u.taskId)}</a><br><span style="font-size:11px;color:var(--muted)">${mtEsc(t?t.taskName:'')}</span></td><td>${mtEsc(t?t.name:'')}</td>`:''}<td>${mtEsc(u.by||'—')}${u.role?` <span style="font-size:10px;color:var(--muted)">(${mtEsc(u.role)})</span>`:''}</td><td>${fmtDateTime(u.on)||'—'}</td><td>${attSize(u.size)}</td><td style="white-space:nowrap"><button class="btn btn-primary btn-sm" onclick="attDownload('${mtEsc(u.fileId)}','${mtEsc(u.url)}')">⬇ Download</button> ${del}</td></tr>`;
+  return `<tr><td>📎 ${mtEsc(u.name)}</td>${showTask?`<td><a href="#" onclick="openTaskDetailModal('${mtEsc(u.taskId)}');return false">${mtEsc(u.taskId)}</a><br><span style="font-size:11px;color:var(--muted)">${mtEsc(t?t.taskName:'')}</span></td><td>${mtEsc(t?t.name:'')}</td>`:''}<td>${mtEsc((u.role==='Admin'?adminDisp():personName(u.by))||'—')}${u.role?` <span style="font-size:10px;color:var(--muted)">(${mtEsc(u.role)})</span>`:''}</td><td>${fmtDateTime(u.on)||'—'}</td><td>${attSize(u.size)}</td><td style="white-space:nowrap"><button class="btn btn-primary btn-sm" onclick="attDownload('${mtEsc(u.fileId)}','${mtEsc(u.url)}')">⬇ Download</button> ${del}</td></tr>`;
 }
 function renderAttachments(){
   const isAdm=currentUser&&currentUser.role==='admin';
@@ -8113,7 +8117,7 @@ async function attAddFromDetail(taskId){
       DB.tasks.filter(t=>t.empId===currentUser.empId).forEach(t=>out.push({k:'T'+t.id,m:'◆ New task assigned: '+t.taskName,c:'var(--accent)'}));
       DB.uploads.filter(u=>u.role==='Admin').forEach(u=>out.push({k:'U'+u.fileId+u.taskId+u.name,m:'📎 New attachment: '+u.name,c:'var(--accent)'}));
     }else{
-      DB.uploads.filter(u=>u.role==='Employee').forEach(u=>out.push({k:'U'+u.fileId+u.taskId+u.name,m:'📎 '+u.by+' attached '+u.name,c:'var(--accent)'}));
+      DB.uploads.filter(u=>u.role==='Employee').forEach(u=>out.push({k:'U'+u.fileId+u.taskId+u.name,m:'📎 '+(u.role==='Admin'?adminDisp():personName(u.by))+' attached '+u.name,c:'var(--accent)'}));
     }
     return out;
   }
