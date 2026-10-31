@@ -2262,7 +2262,7 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
   </div>
   <div id="chat-panel" role="region" aria-label="Chat">
     <div class="chat-side">
-      <div class="chat-side-head"><span>Messages</span></div>
+      <div class="chat-side-head"><span>Messages</span><button class="btn btn-ghost btn-sm" id="chat-newgrp" onclick="chatNewGroup()" title="Create a group chat">＋ New group</button></div>
       <input id="chat-search" placeholder="Search people or teams…" autocomplete="off"/>
       <div id="chat-list"></div>
     </div>
@@ -2271,6 +2271,7 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
         <button class="chat-back" onclick="chatBack()" aria-label="Back">←</button>
         <div id="chat-head-av" class="chat-av" style="display:none"></div>
         <div style="flex:1;min-width:0"><div class="chat-title" id="chat-head-title">Select a conversation</div><div class="chat-sub" id="chat-head-sub"></div></div>
+        <button class="modal-close" id="chat-close" onclick="chatClose()" aria-label="Close chat" title="Close chat (Esc)" style="display:none">×</button>
       </div>
       <div id="chat-banner"></div>
       <div id="chat-thread"></div>
@@ -2579,6 +2580,22 @@ body.app-exit .layout,body.app-exit .topbar{transition:opacity .5s ease,transfor
     <div class="btn-row">
       <button class="btn btn-danger" id="return-submit" onclick="submitReturn()">↩ Return to Employee</button>
       <button class="btn btn-ghost" onclick="closeModal('return-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW GROUP CHAT MODAL -->
+<div class="modal-overlay" id="grp-modal">
+  <div class="modal">
+    <div class="modal-title">New Group Chat <button class="modal-close" onclick="closeModal('grp-modal')">×</button></div>
+    <div class="form-group"><label>Group name</label><input id="grp-name" maxlength="40" placeholder="e.g. Month-end Closing"/></div>
+    <div class="form-group" style="margin-bottom:18px"><label>Members <span id="grp-count" style="color:var(--muted);font-weight:500"></span></label>
+      <input id="grp-q" placeholder="Search people…" autocomplete="off" style="margin-bottom:8px"/>
+      <div id="grp-members" style="max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius);padding:6px"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="grp-go" onclick="chatCreateGroup()">Create Group</button>
+      <button class="btn btn-ghost" onclick="closeModal('grp-modal')">Cancel</button>
     </div>
   </div>
 </div>
@@ -7351,30 +7368,35 @@ body.chat-open #chat-fab{display:none}
 
 <script>
 (function(){
-const CH={rendered:{},flash:{},sentAnim:{},typing:false,typingCh:'',lastBadge:0,dir:[],msgs:[],ids:{},last:'',open:false,active:'',timer:null,reads:{},err:'',search:'',on:false,busy:false,loaded:false,sig:''};
+const CH={rendered:{},flash:{},sentAnim:{},typing:false,typingCh:'',lastBadge:0,dir:[],msgs:[],ids:{},last:'',open:false,active:'',timer:null,reads:{},err:'',search:'',on:false,busy:false,loaded:false,sig:'',groups:[]};
 const $=id=>document.getElementById(id);
 const COLORS=['#3b5bdb','#0f9b6e','#e8840a','#9c36b5','#d6336c','#1098ad','#5c7cfa','#74b816'];
 const isAdm=()=>!!(currentUser&&currentUser.role==='admin');
 const me=()=>currentUser?(isAdm()?'ADMIN':String(currentUser.empId||currentUser.username)):'';
 const meName=()=>currentUser?(currentUser.displayName||currentUser.username||me()):'';
 const dmKey=(a,b)=>'dm:'+[a,b].sort().join('|');
-const initials=n=>String(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';
+const initials=n=>String(n||'?').trim().split(/\s+/).filter(w=>/[A-Za-z0-9]/.test(w)).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';
 const colorOf=s=>{let h=0;s=String(s);for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return COLORS[Math.abs(h)%COLORS.length];};
 const esc=v=>mtEsc(v);
 const readKey=()=>'chatRead:'+me();
 
-const dirList=()=>CH.dir.length?CH.dir:DB.staff;   // employees only receive their own row in DB.staff, so use the chat directory
+const dirList=()=>(CH.dir.length?CH.dir:DB.staff).filter(s=>s.empId!=='ADMIN');   // employees only receive their own row in DB.staff, so use the chat directory
 function myTeam(){const s=dirList().find(x=>x.empId===me());return s?s.team:'';}
 function teamList(){
   if(isAdm())return[...new Set(dirList().map(s=>s.team).filter(Boolean))].sort();
   const t=myTeam();return t?[t]:[];
 }
+function adminLabel(n){n=String(n||'').trim();return(!n||/^(hr\s*)?admin$/i.test(n))?'Admin':'Admin · '+n.replace(/^(hr\s*)?admin\s*[·:-]\s*/i,'');}
+function adminName(){if(isAdm())return adminLabel(meName());const ad=CH.dir.find(s=>s.empId==='ADMIN');return adminLabel(ad&&ad.name);}
+function senderName(m){return m.from==='ADMIN'?adminName():m.name;}
 function contactList(){
-  const a=dirList().filter(s=>s.empId&&s.empId!==me()).map(s=>({id:s.empId,name:s.name||s.empId,sub:s.designation||s.team||''}));
-  if(!isAdm())a.unshift({id:'ADMIN',name:'HR Admin',sub:'Manager'});
+  const a=dirList().filter(s=>s.empId&&s.empId!=='ADMIN'&&s.empId!==me()).map(s=>({id:s.empId,name:s.name||s.empId,sub:s.designation||s.team||''}));
+  const ad=CH.dir.find(s=>s.empId==='ADMIN');
+  if(!isAdm())a.unshift({id:'ADMIN',name:adminLabel(ad&&ad.name),sub:'Manager'});
   return a;
 }
 function chMeta(ch){
+  if(ch.startsWith('grp:')){const g=CH.groups.find(x=>x.id===ch);return{title:g?g.name:'Group',sub:g?g.members.length+' members':'Group',av:initials(g?g.name:'G'),team:true,color:colorOf(ch)};}
   if(ch.startsWith('team:')){const t=ch.slice(5);const n=dirList().filter(s=>s.team===t).length;return{title:t+' · Team',sub:n?n+' members':'Team chat',av:initials(t),team:true,color:colorOf(t)};}
   const ids=ch.slice(3).split('|');const other=ids.find(x=>x!==me())||ids[0];
   const c=contactList().find(x=>x.id===other);
@@ -7385,6 +7407,7 @@ function lastOf(ch){let r=null;for(const m of CH.msgs)if(m.ch===ch)r=m;return r;
 function unreadOf(ch){const rd=CH.reads[ch]||'';return CH.msgs.filter(m=>m.ch===ch&&m.from!==me()&&!m.pending&&m.ts>rd).length;}
 function allChannels(){
   const L=teamList().map(t=>'team:'+t);
+  CH.groups.forEach(g=>L.push(g.id));
   contactList().forEach(c=>L.push(dmKey(me(),c.id)));return L;
 }
 function totalUnread(){return allChannels().reduce((a,c)=>a+unreadOf(c),0);}
@@ -7405,7 +7428,7 @@ function renderBadge(){
   CH.lastBadge=n;
 }
 function itemHtml(ch,meta,last,un){
-  const prev=last?((last.from===me()?'You: ':(meta.team?last.name.split(' ')[0]+': ':''))+last.text):(meta.sub||'');
+  const prev=last?((last.from===me()?'You: ':(meta.team?(last.from==='ADMIN'?'Admin':String(last.name||'').split(' ')[0])+': ':''))+last.text):(meta.sub||'');
   const fl=CH.flash&&CH.flash[ch];
   return`<div class="chat-item${ch===CH.active?' active':''}${fl?' flash':''}" data-ch="${esc(ch)}"><div class="chat-av${meta.team?' team':''}" style="background:${meta.color}">${esc(meta.av)}</div><div class="chat-meta"><div class="chat-name">${esc(meta.title)}</div><div class="chat-prev">${esc(prev)}</div></div>${un?`<span class="chat-unread${fl?' pop':''}">${un>99?'99+':un}</span>`:''}</div>`;
 }
@@ -7413,6 +7436,8 @@ function renderList(){
   const q=CH.search.trim().toLowerCase();let h='';
   const tl=teamList().filter(t=>!q||t.toLowerCase().includes(q));
   if(tl.length){h+='<div class="chat-sec">Team chat</div>';tl.forEach(t=>{const ch='team:'+t;h+=itemHtml(ch,chMeta(ch),lastOf(ch),unreadOf(ch));});}
+  const gl=CH.groups.filter(g=>!q||g.name.toLowerCase().includes(q));
+  if(gl.length){h+='<div class="chat-sec">Groups</div>';gl.map(g=>({g,last:lastOf(g.id)})).sort((a,b)=>(b.last?b.last.ts:'').localeCompare(a.last?a.last.ts:'')||a.g.name.localeCompare(b.g.name)).forEach(x=>{h+=itemHtml(x.g.id,chMeta(x.g.id),x.last,unreadOf(x.g.id));});}
   const dl=contactList().filter(c=>!q||c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q)).map(c=>{const ch=dmKey(me(),c.id);return{ch,c,last:lastOf(ch)};});
   dl.sort((a,b)=>(b.last?b.last.ts:'').localeCompare(a.last?a.last.ts:'')||a.c.name.localeCompare(b.c.name));
   if(dl.length){h+='<div class="chat-sec">Private messages</div>';dl.forEach(x=>{h+=itemHtml(x.ch,chMeta(x.ch),x.last,unreadOf(x.ch));});}
@@ -7428,13 +7453,13 @@ const dayLabel=iso=>{
 const timeLabel=iso=>new Date(iso).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
 function renderHead(){
   const av=$('chat-head-av');
-  if(!CH.active){$('chat-head-title').textContent='Select a conversation';$('chat-head-sub').textContent='';av.style.display='none';$('chat-compose').style.display='none';return;}
+  if(!CH.active){$('chat-head-title').textContent='Select a conversation';$('chat-head-sub').textContent='';av.style.display='none';$('chat-compose').style.display='none';$('chat-close').style.display='none';return;}
   const m=chMeta(CH.active);
   $('chat-head-title').textContent=m.title;const _hs=$('chat-head-sub'),_ty=CH.typing&&CH.typingCh===CH.active;_hs.textContent=_ty?'typing':m.sub;_hs.classList.toggle('typing',_ty);
   av.style.display='flex';av.className='chat-av'+(m.team?' team':'');av.style.background=m.color;av.textContent=m.av;
-  $('chat-compose').style.display='flex';
+  $('chat-compose').style.display='flex';$('chat-close').style.display='block';
 }
-const EMPTY_PICK='<div class="chat-empty"><svg class="ce-art" viewBox="0 0 160 120"><g class="b1"><rect x="14" y="18" width="84" height="50" rx="16" fill="#3b5bdb"/><path d="M34 66l-8 16 22-12z" fill="#3b5bdb"/><circle class="d" cx="40" cy="43" r="5" fill="#fff"/><circle class="d" cx="56" cy="43" r="5" fill="#fff"/><circle class="d" cx="72" cy="43" r="5" fill="#fff"/></g><g class="b2"><rect x="70" y="52" width="76" height="46" rx="15" fill="#20c997"/><path d="M128 96l8 14-20-10z" fill="#20c997"/><rect x="86" y="68" width="44" height="6" rx="3" fill="#fff" opacity=".9"/><rect x="86" y="79" width="28" height="6" rx="3" fill="#fff" opacity=".6"/></g></svg><b>Your conversations</b>Pick a team or a person on the left to start chatting.</div>';
+const EMPTY_PICK='<div class="chat-empty"><svg class="ce-art" viewBox="0 0 160 120"><g class="b1"><rect x="14" y="18" width="84" height="50" rx="16" fill="#3b5bdb"/><path d="M34 66l-8 16 22-12z" fill="#3b5bdb"/><circle class="d" cx="40" cy="43" r="5" fill="#fff"/><circle class="d" cx="56" cy="43" r="5" fill="#fff"/><circle class="d" cx="72" cy="43" r="5" fill="#fff"/></g><g class="b2"><rect x="70" y="52" width="76" height="46" rx="15" fill="#20c997"/><path d="M128 96l8 14-20-10z" fill="#20c997"/><rect x="86" y="68" width="44" height="6" rx="3" fill="#fff" opacity=".9"/><rect x="86" y="79" width="28" height="6" rx="3" fill="#fff" opacity=".6"/></g></svg><b>Your conversations</b>Pick a team, group or person on the left to start chatting.</div>';
 const EMPTY_NONE='<div class="chat-empty"><svg class="ce-art" viewBox="0 0 160 120"><g class="b1"><rect x="30" y="20" width="100" height="62" rx="20" fill="#eef2ff" stroke="#c5d0f5" stroke-width="2"/><path d="M52 80l-10 20 26-16z" fill="#eef2ff" stroke="#c5d0f5" stroke-width="2"/><circle class="d" cx="64" cy="51" r="6" fill="#3b5bdb"/><circle class="d" cx="80" cy="51" r="6" fill="#3b5bdb"/><circle class="d" cx="96" cy="51" r="6" fill="#3b5bdb"/></g></svg><b>No messages yet</b>Say hello <span class="wave">👋</span></div>';
 const TICK='<svg class="tk%C" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 5"/></svg>';
 function renderThread(force){
@@ -7450,12 +7475,12 @@ function renderThread(force){
   list.forEach(m=>{
     const d=dayLabel(m.ts);if(d!==day){h+=`<div class="chat-day">${esc(d)}</div>`;day=d;prevFrom='';}
     const mine=m.from===me(),first=prevFrom!==m.from;
-    const showName=CH.active.startsWith('team:')&&!mine&&first;prevFrom=m.from;
+    const showName=(CH.active.startsWith('team:')||CH.active.startsWith('grp:'))&&!mine&&first;prevFrom=m.from;
     const isNew=!CH.rendered[m.id];CH.rendered[m.id]=1;if(isNew)anyNew=true;
     const drawTick=!!CH.sentAnim[m.id];if(drawTick)delete CH.sentAnim[m.id];
     const st=m.failed?`<div class="chat-time fail" data-retry="${esc(m.id)}">⚠ Not sent — tap to retry</div>`:`<div class="chat-time">${timeLabel(m.ts)}${mine?(m.pending?' <span class="snd-dots"><i></i><i></i><i></i></span>sending':' · Sent'+TICK.replace('%C',drawTick?' draw':'')):''}</div>`;
     const av=mine?'':(first?`<div class="chat-av sm" style="background:${colorOf(m.from)}">${esc(initials(m.name))}</div>`:'<div class="chat-av sm ghost"></div>');
-    h+=`<div class="chat-row ${mine?'me':'them'}${isNew?(mine?' new-me':' new-them'):''}">${showName?`<div class="chat-from">${esc(m.name)}</div>`:''}<div class="chat-line">${av}<div class="chat-bub">${esc(m.text)}</div></div>${st}</div>`;
+    h+=`<div class="chat-row ${mine?'me':'them'}${isNew?(mine?' new-me':' new-them'):''}">${showName?`<div class="chat-from">${esc(senderName(m))}</div>`:''}<div class="chat-line">${av}<div class="chat-bub">${esc(m.text)}</div></div>${st}</div>`;
   });
   if(typing){const tn=(CH.typingName||'');h+=`<div class="chat-row them typing"><div class="chat-line"><div class="chat-av sm" style="background:${colorOf(CH.typingFrom||tn)}">${esc(initials(tn))}</div><div class="chat-bub typ"><i></i><i></i><i></i></div></div></div>`;}
   box.innerHTML=h;
@@ -7494,6 +7519,7 @@ async function poll(){
     if(!CH.dir.length||Date.now()-(CH.dirAt||0)>600000){try{const d=await dbPost({action:'chatDirectory'});if(Array.isArray(d.result)){CH.dir=d.result;CH.dirAt=Date.now();}}catch(e){}}
     const r=await dbPost({action:'chatGet',since:CH.last});
     const first=!CH.loaded;
+    if(r.result&&Array.isArray(r.result.groups))CH.groups=r.result.groups.map(g=>({id:String(g.id),name:String(g.name||'Group'),members:Array.isArray(g.members)?g.members.map(String):[],by:String(g.by||'')}));
     const added=merge(r.result&&r.result.messages?r.result.messages:r.result);
     CH.err='';
     if(first){CH.loaded=true;initReads();}
@@ -7503,12 +7529,12 @@ async function poll(){
       if(CH.open&&!document.hidden){
         const act=live.filter(m=>m.ch===CH.active);
         if(act.length&&act.length<=3){
-          act.forEach(m=>{m.hold=true;});CH.typing=true;CH.typingCh=CH.active;CH.typingName=act[0].name;CH.typingFrom=act[0].from;
+          act.forEach(m=>{m.hold=true;});CH.typing=true;CH.typingCh=CH.active;CH.typingName=senderName(act[0]);CH.typingFrom=act[0].from;
           setTimeout(()=>{act.forEach(m=>{m.hold=false;});CH.typing=false;renderAll();markRead();},900+act.length*350);
         }
       }
       const inc=added.filter(m=>m.from!==me()&&m.ts>(CH.reads[m.ch]||''));
-      if(inc.length&&!(CH.open&&!document.hidden)){const m=inc[inc.length-1];toast('💬 '+(m.name||'New message')+': '+m.text.slice(0,60),'var(--accent)');}
+      if(inc.length&&!(CH.open&&!document.hidden)){const m=inc[inc.length-1];toast('💬 '+(senderName(m)||'New message')+': '+m.text.slice(0,60),'var(--accent)');}
     }
     if(CH.open&&!document.hidden)markRead();
     renderAll();
@@ -7553,11 +7579,33 @@ function selectCh(ch){
   CH.sig='';renderAll(true);markRead();
   if(window.innerWidth>700)$('chat-input').focus();
 }
-window.chatBack=function(){$('chat-panel').classList.remove('thread-open');};
+window.chatNewGroup=function(){
+  $('grp-name').value='';$('grp-q').value='';CH.pick={};drawPick();$('grp-modal').classList.add('open');setTimeout(()=>$('grp-name').focus(),50);
+};
+function drawPick(){
+  const q=($('grp-q').value||'').trim().toLowerCase();
+  const l=contactList().filter(c=>c.id!=='ADMIN'||!isAdm()).filter(c=>!q||c.name.toLowerCase().includes(q)||c.id.toLowerCase().includes(q));
+  $('grp-members').innerHTML=l.length?l.map(c=>`<label style="display:flex;align-items:center;gap:10px;padding:7px 8px;cursor:pointer;border-radius:8px;font-weight:500"><input type="checkbox" data-id="${esc(c.id)}" ${CH.pick[c.id]?'checked':''} style="width:auto;margin:0"/><span class="chat-av sm" style="background:${colorOf(c.id)}">${esc(initials(c.name))}</span><span style="flex:1;min-width:0">${esc(c.name)}<small style="display:block;color:var(--muted);font-size:11px">${esc(c.sub)}</small></span></label>`).join(''):'<div class="chat-empty">No matches</div>';
+  const n=Object.keys(CH.pick).length;$('grp-count').textContent=n?'· '+n+' selected':'';
+}
+window.chatCreateGroup=async function(){
+  const name=$('grp-name').value.trim().slice(0,40);const ids=Object.keys(CH.pick);
+  if(!name){toast('Enter a group name','var(--danger)');return;}
+  if(!ids.length){toast('Select at least one member','var(--danger)');return;}
+  const b=$('grp-go');b.disabled=true;
+  try{
+    const r=await dbPost({action:'chatCreateGroup',name,members:ids});
+    const g=r&&r.result;if(!g||!g.id)throw new Error('Group not created');
+    CH.groups=CH.groups.filter(x=>x.id!==g.id).concat([{id:String(g.id),name:String(g.name||name),members:(g.members||[]).map(String),by:me()}]);
+    closeModal('grp-modal');toast('✓ Group "'+name+'" created','var(--accent2)');selectCh(g.id);
+  }catch(e){toast('Could not create group: '+e.message,'var(--danger)');}
+  b.disabled=false;
+};
+window.chatClose=function(){CH.active='';CH.typing=false;$('chat-panel').classList.remove('thread-open');CH.sig='';renderAll(true);};
+window.chatBack=window.chatClose;
 function setOpen(v){
   v=!!v;if(CH.open===v)return;CH.open=v;document.body.classList.toggle('chat-open',v);
   if(v){
-    if(!CH.active&&window.innerWidth>700){const t=teamList()[0];if(t)CH.active='team:'+t;}
     if(CH.active)markRendered(CH.active);
     $('chat-panel').classList.remove('thread-open');
     CH.sig='';renderAll(true);markRead();paintSnd();poll();
@@ -7572,7 +7620,7 @@ window.chatStart=function(){
 };
 window.chatStop=function(){
   CH.on=false;clearTimeout(CH.timer);
-  Object.assign(CH,{rendered:{},flash:{},sentAnim:{},typing:false,lastBadge:0,dir:[],dirAt:0,msgs:[],ids:{},last:'',open:false,active:'',reads:{},err:'',search:'',busy:false,loaded:false,sig:''});
+  Object.assign(CH,{rendered:{},flash:{},sentAnim:{},typing:false,lastBadge:0,dir:[],dirAt:0,msgs:[],ids:{},last:'',open:false,active:'',reads:{},err:'',search:'',busy:false,loaded:false,sig:'',groups:[]});
   document.body.classList.remove('chat-on','chat-open');
   const p=$('chat-panel');if(p){p.classList.remove('open','thread-open');}
   const s=$('chat-search');if(s)s.value='';
@@ -7584,12 +7632,15 @@ window.chatStop=function(){
 document.addEventListener('DOMContentLoaded',()=>{
   $('chat-list').addEventListener('click',e=>{const it=e.target.closest('.chat-item');if(it)selectCh(it.dataset.ch);});
   $('chat-thread').addEventListener('click',e=>{const r=e.target.closest('[data-retry]');if(r){const m=CH.ids[r.dataset.retry];if(m)postMsg(m);}});
+  $('grp-members').addEventListener('change',e=>{const i=e.target.closest('input[data-id]');if(!i)return;if(i.checked)CH.pick[i.dataset.id]=1;else delete CH.pick[i.dataset.id];$('grp-count').textContent=Object.keys(CH.pick).length?'· '+Object.keys(CH.pick).length+' selected':'';});
+  $('grp-q').addEventListener('input',drawPick);
   $('chat-search').addEventListener('input',e=>{CH.search=e.target.value;renderList();});
   const ta=$('chat-input');
   ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend();}});
   ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,100)+'px';});
   const pg=$('page-chat');if(pg){new MutationObserver(()=>setOpen(pg.classList.contains('active'))).observe(pg,{attributes:true,attributeFilter:['class']});}
   paintSnd();
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&CH.open&&CH.active&&!document.querySelector('.modal-overlay.open'))chatClose();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&CH.on){clearTimeout(CH.timer);poll();}});
 });
 
